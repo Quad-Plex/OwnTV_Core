@@ -39,7 +39,7 @@ fun livePagingSource(
     return if (query.isBlank()) {
         when (key) {
             LiveKey.All -> if (playlist) channelDao.pagingAllOriginal(ids) else channelDao.pagingAll(ids)
-            LiveKey.Favorites -> channelDao.pagingFavoritesManual(profileId, ContentOrderEntity.FAV_CONTEXT, ids)
+            LiveKey.Favorites -> channelDao.pagingFavoritesManual(profileId, ContentOrderEntity.FAV_CONTEXT, ids, alpha = !playlist)
             LiveKey.History -> channelDao.pagingHistory(profileId, ids)
             LiveKey.Catchup -> if (playlist) channelDao.pagingCatchupOriginal(ids) else channelDao.pagingCatchup(ids)
             is LiveKey.Custom -> customCategoryDao.pagingChannels(profileId, key.id, ids, alpha = !playlist)
