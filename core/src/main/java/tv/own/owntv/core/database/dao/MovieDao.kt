@@ -122,10 +122,10 @@ interface MovieDao {
     @Query("SELECT * FROM movies WHERE categoryId = :categoryId ORDER BY sortOrder ASC, name ASC")
     fun pagingByCategory(categoryId: Long): PagingSource<Int, MovieEntity>
 
-    @Query("SELECT * FROM movies WHERE categoryId = :categoryId ORDER BY name ASC")
+    @Query("SELECT * FROM movies WHERE categoryId = :categoryId ORDER BY LOWER(name) ASC, id ASC")
     fun pagingByCategoryAlpha(categoryId: Long): PagingSource<Int, MovieEntity>
 
-    @Query("SELECT * FROM movies WHERE sourceId IN (:sourceIds) ORDER BY name ASC")
+    @Query("SELECT * FROM movies WHERE sourceId IN (:sourceIds) ORDER BY LOWER(name) ASC, id ASC")
     fun pagingAll(sourceIds: List<Long>): PagingSource<Int, MovieEntity>
 
     @Query("SELECT * FROM movies WHERE sourceId IN (:sourceIds) ORDER BY sourceId ASC, sortOrder ASC, name ASC")
@@ -157,12 +157,12 @@ interface MovieDao {
     /** Moved rows keep their saved position; the rest follow [alpha] (A–Z) or the playlist order
      *  around them — the same rule as `placePinned` for categories. */
     @Query(
-            "WITH base AS (SELECT m.id AS id, m.sortOrder AS so, m.name AS nm, 0 AS mp, o.position AS pos " +
+            "WITH base AS (SELECT m.id AS id, m.sortOrder AS so, LOWER(m.name) AS nm, 0 AS mp, o.position AS pos " +
             "FROM movies m " +
             "LEFT JOIN content_order o ON o.itemId = m.id AND o.profileId = :profileId AND o.mediaType = 'MOVIE' AND o.contextKey = :contextKey " +
             "WHERE m.categoryId = :categoryId), " +
             "slots AS (SELECT id, pos - (ROW_NUMBER() OVER (ORDER BY pos, id) - 1) AS slot, 0 AS grp, pos AS tie FROM base WHERE pos IS NOT NULL " +
-            "UNION ALL SELECT id, ROW_NUMBER() OVER (ORDER BY CASE WHEN :alpha THEN nm END, mp, so, nm) - 1 AS slot, 1 AS grp, 0 AS tie FROM base WHERE pos IS NULL) " +
+            "UNION ALL SELECT id, ROW_NUMBER() OVER (ORDER BY CASE WHEN :alpha THEN nm END, mp, so, nm, id) - 1 AS slot, 1 AS grp, 0 AS tie FROM base WHERE pos IS NULL) " +
             "SELECT m.* FROM movies m INNER JOIN slots sl ON sl.id = m.id ORDER BY sl.slot, sl.grp, sl.tie",
     )
     fun pagingByCategoryManual(categoryId: Long, profileId: Long, contextKey: String, alpha: Boolean): PagingSource<Int, MovieEntity>
@@ -180,12 +180,12 @@ interface MovieDao {
     /** Moved rows keep their saved position; the rest follow [alpha] (A–Z) or the playlist order
      *  around them — the same rule as `placePinned` for categories. */
     @Query(
-            "WITH base AS (SELECT m.id AS id, m.sortOrder AS so, m.name AS nm, 0 AS mp, o.position AS pos " +
+            "WITH base AS (SELECT m.id AS id, m.sortOrder AS so, LOWER(m.name) AS nm, 0 AS mp, o.position AS pos " +
             "FROM movies m " +
             "LEFT JOIN content_order o ON o.itemId = m.id AND o.profileId = :profileId AND o.mediaType = 'MOVIE' AND o.contextKey = :contextKey " +
             "WHERE m.categoryId = :categoryId), " +
             "slots AS (SELECT id, pos - (ROW_NUMBER() OVER (ORDER BY pos, id) - 1) AS slot, 0 AS grp, pos AS tie FROM base WHERE pos IS NOT NULL " +
-            "UNION ALL SELECT id, ROW_NUMBER() OVER (ORDER BY CASE WHEN :alpha THEN nm END, mp, so, nm) - 1 AS slot, 1 AS grp, 0 AS tie FROM base WHERE pos IS NULL) " +
+            "UNION ALL SELECT id, ROW_NUMBER() OVER (ORDER BY CASE WHEN :alpha THEN nm END, mp, so, nm, id) - 1 AS slot, 1 AS grp, 0 AS tie FROM base WHERE pos IS NULL) " +
             "SELECT m.* FROM movies m INNER JOIN slots sl ON sl.id = m.id ORDER BY sl.slot, sl.grp, sl.tie LIMIT :limit",
     )
     suspend fun snapshotByCategoryManual(categoryId: Long, profileId: Long, contextKey: String, alpha: Boolean, limit: Int): List<MovieEntity>

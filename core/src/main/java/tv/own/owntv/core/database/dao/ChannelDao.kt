@@ -272,10 +272,13 @@ interface ChannelDao {
     @Query("SELECT * FROM channels WHERE categoryId = :categoryId ORDER BY sortOrder ASC, name ASC")
     fun pagingByCategory(categoryId: Long): PagingSource<Int, ChannelEntity>
 
-    @Query("SELECT * FROM channels WHERE categoryId = :categoryId ORDER BY name ASC")
+    // A–Z compares LOWER(name): SQLite's default BINARY collation puts every lowercase name after
+    // every uppercase one, so "arte" used to land below "ZDFneo". `id` keeps paging stable where
+    // two names differ only in case.
+    @Query("SELECT * FROM channels WHERE categoryId = :categoryId ORDER BY LOWER(name) ASC, id ASC")
     fun pagingByCategoryAlpha(categoryId: Long): PagingSource<Int, ChannelEntity>
 
-    @Query("SELECT * FROM channels WHERE sourceId IN (:sourceIds) ORDER BY name ASC")
+    @Query("SELECT * FROM channels WHERE sourceId IN (:sourceIds) ORDER BY LOWER(name) ASC, id ASC")
     fun pagingAll(sourceIds: List<Long>): PagingSource<Int, ChannelEntity>
 
     @Query("SELECT * FROM channels WHERE sourceId IN (:sourceIds) ORDER BY sourceId ASC, sortOrder ASC, name ASC")
@@ -285,7 +288,7 @@ interface ChannelDao {
     //     rows as ALL, so it needs no sync work and stays correct after every re-sync. Deliberately
     //     independent of the guide: `catchup` comes from the playlist, so these lists are populated
     //     even for a user with no EPG at all (who is exactly the person looking for them).
-    @Query("SELECT * FROM channels WHERE sourceId IN (:sourceIds) AND catchup = 1 ORDER BY name ASC")
+    @Query("SELECT * FROM channels WHERE sourceId IN (:sourceIds) AND catchup = 1 ORDER BY LOWER(name) ASC, id ASC")
     fun pagingCatchup(sourceIds: List<Long>): PagingSource<Int, ChannelEntity>
 
     @Query("SELECT * FROM channels WHERE sourceId IN (:sourceIds) AND catchup = 1 ORDER BY sourceId ASC, sortOrder ASC, name ASC")
@@ -296,12 +299,12 @@ interface ChannelDao {
     /** Moved rows keep their saved position; the rest follow [alpha] (A–Z) or the playlist order
      *  around them — the same rule as `placePinned` for categories. */
     @Query(
-            "WITH base AS (SELECT c.id AS id, c.sortOrder AS so, c.name AS nm, 0 AS mp, o.position AS pos " +
+            "WITH base AS (SELECT c.id AS id, c.sortOrder AS so, LOWER(c.name) AS nm, 0 AS mp, o.position AS pos " +
             "FROM channels c " +
             "LEFT JOIN content_order o ON o.itemId = c.id AND o.profileId = :profileId AND o.mediaType = 'LIVE' AND o.contextKey = :contextKey " +
             "WHERE c.categoryId = :categoryId), " +
             "slots AS (SELECT id, pos - (ROW_NUMBER() OVER (ORDER BY pos, id) - 1) AS slot, 0 AS grp, pos AS tie FROM base WHERE pos IS NOT NULL " +
-            "UNION ALL SELECT id, ROW_NUMBER() OVER (ORDER BY CASE WHEN :alpha THEN nm END, mp, so, nm) - 1 AS slot, 1 AS grp, 0 AS tie FROM base WHERE pos IS NULL) " +
+            "UNION ALL SELECT id, ROW_NUMBER() OVER (ORDER BY CASE WHEN :alpha THEN nm END, mp, so, nm, id) - 1 AS slot, 1 AS grp, 0 AS tie FROM base WHERE pos IS NULL) " +
             "SELECT c.* FROM channels c INNER JOIN slots sl ON sl.id = c.id ORDER BY sl.slot, sl.grp, sl.tie",
     )
     fun pagingByCategoryManual(categoryId: Long, profileId: Long, contextKey: String, alpha: Boolean): PagingSource<Int, ChannelEntity>
@@ -318,7 +321,7 @@ interface ChannelDao {
             "LEFT JOIN content_order o ON o.itemId = c.id AND o.profileId = :profileId AND o.mediaType = 'LIVE' AND o.contextKey = :contextKey " +
             "WHERE f.profileId = :profileId AND c.sourceId IN (:sourceIds) " +
             "ORDER BY (CASE WHEN o.position IS NULL THEN 1 ELSE 0 END), o.position, " +
-            "(CASE WHEN :alpha = 0 THEN f.addedAt END) DESC, (CASE WHEN :alpha = 1 THEN c.name END) ASC, c.id ASC",
+            "(CASE WHEN :alpha = 0 THEN f.addedAt END) DESC, (CASE WHEN :alpha = 1 THEN LOWER(c.name) END) ASC, c.id ASC",
     )
     fun pagingFavoritesManual(
         profileId: Long,
@@ -330,12 +333,12 @@ interface ChannelDao {
     /** Bounded snapshot of a folder in manual order, for the Move session's in-memory reorder. Moved rows keep their saved position; the rest follow
      *  [alpha] (A–Z) or the playlist order around them. */
     @Query(
-            "WITH base AS (SELECT c.id AS id, c.sortOrder AS so, c.name AS nm, 0 AS mp, o.position AS pos " +
+            "WITH base AS (SELECT c.id AS id, c.sortOrder AS so, LOWER(c.name) AS nm, 0 AS mp, o.position AS pos " +
             "FROM channels c " +
             "LEFT JOIN content_order o ON o.itemId = c.id AND o.profileId = :profileId AND o.mediaType = 'LIVE' AND o.contextKey = :contextKey " +
             "WHERE c.categoryId = :categoryId), " +
             "slots AS (SELECT id, pos - (ROW_NUMBER() OVER (ORDER BY pos, id) - 1) AS slot, 0 AS grp, pos AS tie FROM base WHERE pos IS NOT NULL " +
-            "UNION ALL SELECT id, ROW_NUMBER() OVER (ORDER BY CASE WHEN :alpha THEN nm END, mp, so, nm) - 1 AS slot, 1 AS grp, 0 AS tie FROM base WHERE pos IS NULL) " +
+            "UNION ALL SELECT id, ROW_NUMBER() OVER (ORDER BY CASE WHEN :alpha THEN nm END, mp, so, nm, id) - 1 AS slot, 1 AS grp, 0 AS tie FROM base WHERE pos IS NULL) " +
             "SELECT c.* FROM channels c INNER JOIN slots sl ON sl.id = c.id ORDER BY sl.slot, sl.grp, sl.tie LIMIT :limit",
     )
     suspend fun snapshotByCategoryManual(categoryId: Long, profileId: Long, contextKey: String, alpha: Boolean, limit: Int): List<ChannelEntity>
@@ -357,7 +360,7 @@ interface ChannelDao {
             "LEFT JOIN content_order o ON o.itemId = c.id AND o.profileId = :profileId AND o.mediaType = 'LIVE' AND o.contextKey = :contextKey " +
             "WHERE f.profileId = :profileId AND c.sourceId IN (:sourceIds) " +
             "ORDER BY (CASE WHEN o.position IS NULL THEN 1 ELSE 0 END), o.position, " +
-            "(CASE WHEN :alpha = 0 THEN f.addedAt END) DESC, (CASE WHEN :alpha = 1 THEN c.name END) ASC, c.id ASC LIMIT :limit",
+            "(CASE WHEN :alpha = 0 THEN f.addedAt END) DESC, (CASE WHEN :alpha = 1 THEN LOWER(c.name) END) ASC, c.id ASC LIMIT :limit",
     )
     suspend fun snapshotFavoritesManual(
         profileId: Long,

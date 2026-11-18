@@ -49,9 +49,10 @@ data class CategoryEntity(
     indices = [
         Index("epgChannelId"),
         Index(value = ["sourceId", "remoteId"], unique = true),
-        // Composite grid read-indices (v6): A–Z order (ORDER BY name) and playlist/provider order
-        // (ORDER BY sortOrder, name), for both the whole-source list and per-category. Mirrors movies/series
-        // so all three browse grids (Live/Movies/Series) are index-served in either sort.
+        // Composite grid read-indices (v6): playlist/provider order (ORDER BY sortOrder, name),
+        // for both the whole-source list and per-category, plus name lookups and tie-breaks.
+        // A–Z is NOT index-served: it sorts by LOWER(name) so lowercase names ("arte") sort with
+        // their letter instead of after every uppercase one; see ChannelDao.pagingAll.
         Index(value = ["sourceId", "name"]),
         Index(value = ["categoryId", "name"]),
         Index(value = ["sourceId", "sortOrder", "name"]),
